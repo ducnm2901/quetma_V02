@@ -115,11 +115,18 @@
             <span class="grid h-5 w-5 place-items-center rounded-md bg-cyan-50 text-[11px] font-bold text-cyan-700 ring-1 ring-cyan-100">1</span>
             Quét mã
           </h2>
-          <label class="flex cursor-pointer items-center gap-2 text-[12px] font-medium text-slate-600">
-            <input id="beepToggle" type="checkbox" checked
-                   class="h-4 w-4 rounded border-slate-300 text-cyan-500 focus:ring-2 focus:ring-cyan-400 focus:ring-offset-0" />
-            Âm thanh
-          </label>
+          <div class="flex items-center gap-3">
+            <label class="flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-slate-600">
+              <input id="autoSaveToggle" type="checkbox" checked
+                     class="h-4 w-4 rounded border-slate-300 text-cyan-500 focus:ring-2 focus:ring-cyan-400 focus:ring-offset-0" />
+              Tự lưu
+            </label>
+            <label class="flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-slate-600">
+              <input id="beepToggle" type="checkbox" checked
+                     class="h-4 w-4 rounded border-slate-300 text-cyan-500 focus:ring-2 focus:ring-cyan-400 focus:ring-offset-0" />
+              Âm thanh
+            </label>
+          </div>
         </div>
 
         <div class="p-4 sm:p-5">
@@ -284,6 +291,7 @@
         camDot: document.getElementById('camDot'),
         camHint: document.getElementById('camHint'),
         beepToggle: document.getElementById('beepToggle'),
+        autoSaveToggle: document.getElementById('autoSaveToggle'),
         form: document.getElementById('scanForm'),
         barcode: document.getElementById('barcode'),
         clearBarcodeBtn: document.getElementById('clearBarcodeBtn'),
@@ -342,17 +350,21 @@
         return [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.ITF,
           Html5QrcodeSupportedFormats.QR_CODE
         ];
       }
 
-      var CODE_MIN_LEN = 8;          // mã vạch 1D: ít nhất 8 chữ số
-      var CODE_MAX_LEN = 15;         // mã vạch 1D: nhiều nhất 15 chữ số
+      var CODE_MIN_LEN = 4;          // mã vạch 1D: ít nhất 4 ký tự (hỗ trợ cả thẻ thành viên/voucher ngắn)
+      var CODE_MAX_LEN = 30;         // mã vạch 1D: tối đa 30 ký tự
       var SCAN_COOLDOWN_MS = 2500;   // 2,5 giây: không nhận lại cùng một mã
       var REQUIRED_CONFIRM = 2;      // phải đọc trùng 2 lần liên tiếp mới nhận (chống mã rác)
       /* QR của thẻ dịch vụ thường chứa cả chữ/URL, và mã QR gần như không thể bị
-         đọc rác nhờ mã sửa lỗi Reed-Solomon — nên mặc định nới cho QR.
-         Mã vạch 1D (EAN-13 / Code 128) LUÔN giữ luật 8–15 chữ số + check digit. */
+         đọc rác nhờ mã sửa lỗi Reed-Solomon — nên mặc định nới cho QR. */
       var QR_ACCEPT_ANY_CONTENT = true;
 
       /* --------------------------------------------------------- *
@@ -381,8 +393,10 @@
         if (f === 'ean13' || f === 'upca') return 'ean13';
         if (f === 'ean8') return 'ean8';
         if (f === 'code128') return 'code128';
+        if (f === 'code39') return 'code39';
+        if (f === 'itf') return 'itf';
         if (f === 'qrcode' || f === 'qr') return 'qr';
-        return '';
+        return f;
       }
 
       /** Chữ số kiểm tra kiểu EAN/UPC (mod 10, trọng số 3-1) */
@@ -399,8 +413,10 @@
       }
 
       /**
-       * Chỉ nhận: mã vạch 1D = 8–15 chữ số (+ check digit với họ EAN/UPC);
-       * QR = nội dung bất kỳ khi QR_ACCEPT_ANY_CONTENT = true.
+       * Kiểm tra mã hợp lệ:
+       * - Hỗ trợ mã vạch 1D từ 4–30 ký tự (chữ hoặc số, mã thẻ thành viên, voucher, Code 128, Code 39, EAN...)
+       * - Không chặn mã thẻ nội bộ sai check digit của GS1 retail
+       * - QR: nhận nội dung 1–200 ký tự khi QR_ACCEPT_ANY_CONTENT = true
        * @returns {{ok:boolean, code:string, reason:string, format:string}}
        */
       function validateCode(raw, formatHint) {
@@ -413,29 +429,11 @@
           return { ok: false, code: code, reason: 'length', format: fmt };
         }
 
-        if (!/^\d+$/.test(code)) return { ok: false, code: code, reason: 'not-digits', format: fmt };
+        // Mã vạch 1D: độ dài hợp lệ 4–30 ký tự
         if (code.length < CODE_MIN_LEN || code.length > CODE_MAX_LEN) {
           return { ok: false, code: code, reason: 'length', format: fmt };
         }
-        /* Thư viện báo là EAN-13 nhưng chuỗi không phải 13 số (ví dụ 10 số) → lỗi đọc.
-           Một số máy báo UPC-A thành EAN-13 nên vẫn cho phép 12 số. */
-        if (fmt === 'ean13') {
-          if (code.length !== 13 && code.length !== 12) {
-            return { ok: false, code: code, reason: 'symbol-length', format: fmt };
-          }
-          if (!checkDigitOk(code)) return { ok: false, code: code, reason: 'checksum', format: fmt };
-          return { ok: true, code: code, reason: '', format: fmt };
-        }
-        if (fmt === 'ean8') {
-          if (code.length !== 8) return { ok: false, code: code, reason: 'symbol-length', format: fmt };
-          if (!checkDigitOk(code)) return { ok: false, code: code, reason: 'checksum', format: fmt };
-          return { ok: true, code: code, reason: '', format: fmt };
-        }
 
-        /* Không rõ định dạng: chuỗi dạng EAN/UPC (13/12/8 số) vẫn phải đúng check digit */
-        if (code.length === 13 || code.length === 12 || code.length === 8) {
-          if (!checkDigitOk(code)) return { ok: false, code: code, reason: 'checksum', format: fmt };
-        }
         return { ok: true, code: code, reason: '', format: fmt };
       }
 
@@ -443,6 +441,9 @@
         if (fmt === 'ean13') return 'EAN-13';
         if (fmt === 'ean8') return 'EAN-8';
         if (fmt === 'code128') return 'CODE 128';
+        if (fmt === 'code39') return 'CODE 39';
+        if (fmt === 'upca' || fmt === 'upce') return 'UPC';
+        if (fmt === 'itf') return 'ITF';
         if (fmt === 'qr') return 'QR';
         return '';
       }
@@ -793,9 +794,12 @@
         el.camHint.textContent = 'Đã quét ' + code + (label ? ' (' + label + ')' : '') + '.';
         toast('Đã quét mã: ' + code + (label ? '  ·  ' + label : ''), 'success');
 
-        stopScan().then(function () {
+        // Nếu bật Tự lưu: tự động lưu mà không tắt camera!
+        if (el.autoSaveToggle && el.autoSaveToggle.checked) {
+          handleSave();
+        } else {
           el.customerName.focus();
-        });
+        }
       }
 
       /* --------------------------------------------------------- *
@@ -857,7 +861,6 @@
         el.customerName.value = '';
         el.phone.value = '';
         setManualMode(false);
-        el.barcode.focus();
       }
 
       function setManualMode(on) {

@@ -351,6 +351,7 @@
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.CODE_128,
           Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODABAR,
           Html5QrcodeSupportedFormats.UPC_A,
           Html5QrcodeSupportedFormats.UPC_E,
           Html5QrcodeSupportedFormats.EAN_8,
@@ -394,6 +395,7 @@
         if (f === 'ean8') return 'ean8';
         if (f === 'code128') return 'code128';
         if (f === 'code39') return 'code39';
+        if (f === 'codabar') return 'codabar';
         if (f === 'itf') return 'itf';
         if (f === 'qrcode' || f === 'qr') return 'qr';
         return f;
@@ -424,6 +426,12 @@
         if (!code) return { ok: false, code: code, reason: 'empty', format: '' };
         var fmt = normalizeFormat(formatHint);
 
+        // Riêng Codabar: thường trả về có ký tự Start/Stop A, B, C, D ở 2 đầu (VD: A2304385010916A)
+        // Cần gọt bỏ ký tự Start/Stop này để lấy đúng số thẻ in trên mã (2304385010916)
+        if (fmt === 'codabar') {
+          code = code.replace(/^[ABCD]/i, '').replace(/[ABCD]$/i, '');
+        }
+
         if (fmt === 'qr' && QR_ACCEPT_ANY_CONTENT) {
           if (code.length >= 1 && code.length <= 200) return { ok: true, code: code, reason: '', format: fmt };
           return { ok: false, code: code, reason: 'length', format: fmt };
@@ -442,6 +450,7 @@
         if (fmt === 'ean8') return 'EAN-8';
         if (fmt === 'code128') return 'CODE 128';
         if (fmt === 'code39') return 'CODE 39';
+        if (fmt === 'codabar') return 'CODABAR';
         if (fmt === 'upca' || fmt === 'upce') return 'UPC';
         if (fmt === 'itf') return 'ITF';
         if (fmt === 'qr') return 'QR';

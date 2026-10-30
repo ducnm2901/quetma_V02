@@ -2,601 +2,1043 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Quét Mã Thẻ — Live</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0A2540" />
+  <title>Quét Mã Thẻ</title>
+
+  <!-- Tailwind CSS (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: {
+              DEFAULT: '#0A2540',
+              50: '#F2F6FB',
+              100: '#E3EBF4',
+              600: '#1B4570',
+              700: '#14345C',
+              800: '#0D2B4A',
+              900: '#0A2540',
+              950: '#061B2F'
+            }
+          },
+          boxShadow: {
+            card: '0 1px 2px rgba(10,37,64,.05), 0 10px 30px -12px rgba(10,37,64,.25)'
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Thư viện quét mã: hỗ trợ live-scan qua camera, nhận diện tốt cả 1D Barcode và QR -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #08152e; color: #e2e8f0; overflow-x: hidden; }
-    #cam-wrap { position: relative; width: 100%; min-height: 330px; max-height: 56vh; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    #reader { width: 100% !important; border: none !important; }
-    #reader__scan_region, #reader__dashboard_section, #reader__header_message { display: none !important; }
-    .vf { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 10; }
-    .vf-box { width: 92%; max-width: 420px; height: 200px; position: relative; transition: all 0.25s ease; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35); border-radius: 16px; }
-    .vf-box::before, .vf-box::after, .vf-bl, .vf-br { content: ''; position: absolute; width: 28px; height: 28px; border-color: #22d3ee; border-style: solid; }
-    .vf-box::before { top: 0; left: 0; border-width: 4px 0 0 4px; border-radius: 14px 0 0 0; }
-    .vf-box::after { top: 0; right: 0; border-width: 4px 4px 0 0; border-radius: 0 14px 0 0; }
-    .vf-bl { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-radius: 0 0 0 14px; }
-    .vf-br { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-radius: 0 0 12px 0; }
-    .scan-laser { position: absolute; left: 2%; right: 2%; height: 2.5px; background: linear-gradient(90deg, transparent, #22d3ee, #38bdf8, #22d3ee, transparent); box-shadow: 0 0 12px #22d3ee, 0 0 22px rgba(34,211,238,.9); animation: laserAnim 1.6s ease-in-out infinite; }
-    @keyframes laserAnim { 0% { top: 8%; opacity: .5; } 50% { top: 90%; opacity: 1; } 100% { top: 8%; opacity: .5; } }
-    .target-center-line { position: absolute; top: 50%; left: 6%; right: 6%; height: 1px; border-top: 1.5px dashed rgba(34,211,238,0.5); transform: translateY(-50%); }
-    #scan-flash { position: absolute; inset: 0; pointer-events: none; z-index: 25; background: rgba(34,211,238,0.4); opacity: 0; transition: opacity .12s; }
-    #scan-flash.flash { opacity: 1; }
-    @keyframes codePop { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
-    .code-pop { animation: codePop .25s ease; }
-    .toggle-track { position: relative; width: 38px; height: 22px; border-radius: 11px; transition: background .2s; cursor: pointer; }
-    .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; transition: transform .2s, background .2s; }
-    .ifield { width: 100%; padding: .65rem 1rem; border-radius: .75rem; font-size: .875rem; background: rgba(255,255,255,.06); border: 1.5px solid rgba(34,211,238,.18); color: #e2e8f0; outline: none; }
-    .ifield:focus { border-color: #22d3ee; box-shadow: 0 0 0 3px rgba(34,211,238,.18); }
-    #toast { transition: opacity .3s ease, transform .3s ease; }
-    #toast.hide { opacity: 0; transform: translateY(14px); pointer-events: none; }
-    #toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
-    .btn-press:active { transform: scale(.96); }
-    details > summary { list-style: none; }
-    details > summary::-webkit-details-marker { display: none; }
-    .hidden { display: none !important; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+
+    /* Vùng hiển thị camera */
+    #reader { position: relative; overflow: hidden; background: #061B2F; }
+    /* QUAN TRỌNG: html5-qrcode tính vùng giải mã theo kích thước HIỂN THỊ của video
+       (videoWidth / clientWidth và videoHeight / clientHeight), tức thư viện giả định
+       video được KÉO GIÃN vừa khít khung. Vì vậy phải để object-fit: fill — dùng
+       cover/contain sẽ làm vùng thực sự giải mã LỆCH khỏi khung ngắm. Camera cũng được
+       yêu cầu phát đúng tỉ lệ 4:3 cho khớp khung aspect-[4/3] bên dưới nên ảnh không méo. */
+    #reader video {
+      position: absolute !important;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: fill !important;
+      border-radius: 0 !important;
+    }
+    /* Ẩn canvas phủ + vùng tối/viền mà thư viện tự vẽ — ta dùng overlay + đường quét tự vẽ */
+    #reader canvas, #reader > div { display: none !important; }
+
+    /* Thanh quét chạy qua lại */
+    @keyframes scanSweep {
+      0%   { transform: translateY(0); opacity: .25; }
+      50%  { opacity: 1; }
+      100% { transform: translateY(calc(100% - 2px)); opacity: .25; }
+    }
+    .scan-line { animation: scanSweep 2.2s ease-in-out infinite alternate; }
+
+    @keyframes toastIn {
+      from { transform: translateY(12px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .toast-in { animation: toastIn .18s ease-out both; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin .8s linear infinite; }
+
+    input:read-only { cursor: default; }
   </style>
 </head>
-<body class="flex flex-col min-h-screen">
-<header class="flex-shrink-0 flex items-center gap-3 px-4 py-3" style="background:#0f2144; border-bottom:1px solid rgba(34,211,238,.12);">
-  <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:linear-gradient(135deg,#0c1a33,#06b6d4);">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><path stroke-linecap="round" d="M14 14h2m3 0h2M14 17v2m0 3v-1M17 14v3h3"/></svg>
-  </div>
-  <div class="flex-1 min-w-0">
-    <h1 class="text-sm font-semibold text-white leading-none">Quét Mã Thẻ</h1>
-    <p id="engine-status" class="text-xs text-cyan-400 mt-0.5 truncate font-medium">⚡ Html5Qrcode: EAN-13 • Code 128 • QR Code</p>
-  </div>
-  <div id="cam-badge" class="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style="background:rgba(234,179,8,.1);color:#fbbf24;border:1px solid rgba(234,179,8,.25);">
-    <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse inline-block"></span> Khởi động
-  </div>
-</header>
-<div id="cam-wrap">
-  <div id="reader" class="hidden"></div>
-  <div class="vf">
-    <div id="vf-box" class="vf-box">
-      <div class="vf-bl"></div><div class="vf-br"></div><div class="target-center-line"></div><div class="scan-laser"></div>
-    </div>
-  </div>
-  <div id="scan-flash"></div>
-  <div class="absolute top-3 inset-x-3 z-20 flex items-center justify-between pointer-events-none">
-    <div class="flex items-center gap-2 pointer-events-auto">
-      <button id="btn-torch" onclick="toggleTorch()" class="hidden btn-press p-1.5 rounded-lg text-xs font-medium shadow-lg" style="background:rgba(15,33,68,0.85); color:#facc15; border:1px solid rgba(250,204,21,0.4); backdrop-filter:blur(4px);" title="Bật/Tắt đèn Flash">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-      </button>
-      <button id="btn-switch-cam" onclick="switchCameraNext()" class="btn-press px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-lg" style="background:rgba(15,33,68,0.85); color:#22d3ee; border:1px solid rgba(34,211,238,0.4); backdrop-filter:blur(4px);">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-        <span>Đổi Cam</span>
-      </button>
-      <div>
-        <input type="file" id="file-input" accept="image/*" class="hidden" onchange="scanFromImageFile(event)" />
-        <button onclick="document.getElementById('file-input').click()" class="btn-press px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 text-cyan-300 hover:text-white" style="background:rgba(6,182,212,.15); border:1px solid rgba(34,211,238,.35); backdrop-filter:blur(4px);">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-          <span class="font-semibold">Ảnh</span>
-        </button>
+
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+  <div class="mx-auto w-full max-w-5xl px-4 pt-5 pb-24 sm:px-6 sm:pt-8 lg:pb-10">
+
+    <!-- ============================ HEADER ============================ -->
+    <header class="mb-5 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-navy-900 shadow-card">
+          <svg class="h-6 w-6 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4H8" />
+            <path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V7" />
+            <path d="M20 17v1.5a1.5 1.5 0 0 1-1.5 1.5H16" />
+            <path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V17" />
+            <path d="M7 8v8M10 8v8M13.5 8v8M17 8v8" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-[17px] font-semibold leading-tight tracking-tight text-navy-900">Quét Mã Thẻ</h1>
+          <p class="text-[12px] leading-tight text-slate-500">Barcode 1D · QR Code · Google Sheets</p>
+        </div>
       </div>
-    </div>
-    <div id="cam-init" class="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-30">
-      <div id="cam-spin" class="w-10 h-10 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mb-3"></div>
-      <p id="cam-init-msg" class="text-sm text-cyan-300">Đang mở camera…</p>
-      <button id="btn-manual-start" onclick="initScanner()" class="mt-4 hidden px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded text-sm font-medium">Thử lại</button>
-    </div>
-  </div>
-  <div class="absolute bottom-0 left-0 right-0 px-4 py-2 text-center text-xs text-cyan-300 font-medium pointer-events-none z-10" style="background:linear-gradient(transparent,rgba(0,0,0,.85));">
-    <span id="scan-hint-text">🎯 Đưa mã vạch / mã QR vào khung ngắm</span>
-  </div>
-<main class="flex-1 w-full px-4 py-3 space-y-3 overflow-y-auto">
-  <div class="flex items-center justify-between px-1">
-    <div class="flex items-center gap-2">
-      <span class="text-[10px] text-gray-400 font-medium">MÃ THẺ ĐÃ QUÉT</span>
-      <button onclick="promptManualInput()" class="text-[10px] text-cyan-400 hover:underline">Sửa / Nhập tay</button>
-    </div>
-    <div id="code-display" class="text-base font-mono font-bold truncate mt-0.5 tracking-wider" style="color:#4b5563;">Chờ quét…</div>
-    <button id="btn-clr-code" onclick="clearCode()" class="hidden flex-shrink-0 text-gray-400 hover:text-red-400 p-1" title="Xoá">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-    </button>
-  </div>
-  <div class="flex items-center justify-between px-1 gap-2">
-    <label class="flex items-center gap-2 cursor-pointer select-none" onclick="toggleAutoSave()">
-      <div id="tog-track" class="toggle-track" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);">
-        <div id="tog-thumb" class="toggle-thumb" style="background:#475569;"></div>
+
+      <div id="camStatus" class="flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-slate-600 ring-1 ring-slate-200">
+        <span id="camDot" class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+        <span id="camStatusText">Camera tắt</span>
       </div>
-      <span class="text-xs text-gray-300 font-medium">Tự lưu 2s</span>
-    </label>
-    <div id="cdown-wrap" class="hidden flex items-center gap-2">
-      <div class="w-14 h-1.5 rounded-full overflow-hidden bg-gray-700">
-        <div id="countdown-fill" class="h-full bg-cyan-400 transition-all"></div>
-      </div>
-      <button onclick="cancelAutoSave()" class="text-[11px] text-red-400 font-semibold">Huỷ</button>
-    </div>
+    </header>
+
+    <!-- ============================ MAIN ============================ -->
+    <main class="grid items-start gap-4 lg:grid-cols-2 lg:gap-5">
+
+      <!-- ---------- 1. QUÉT MÃ ---------- -->
+      <section class="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/70">
+        <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+          <h2 class="flex items-center gap-2 text-sm font-semibold text-navy-900">
+            <span class="grid h-5 w-5 place-items-center rounded-md bg-cyan-50 text-[11px] font-bold text-cyan-700 ring-1 ring-cyan-100">1</span>
+            Quét mã
+          </h2>
+          <label class="flex cursor-pointer items-center gap-2 text-[12px] font-medium text-slate-600">
+            <input id="beepToggle" type="checkbox" checked
+                   class="h-4 w-4 rounded border-slate-300 text-cyan-500 focus:ring-2 focus:ring-cyan-400 focus:ring-offset-0" />
+            Âm thanh
+          </label>
+        </div>
+
+        <div class="p-4 sm:p-5">
+          <div class="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-navy-950 ring-1 ring-navy-900/20">
+            <div id="reader" class="h-full w-full"></div>
+
+            <!-- Khung ngắm + đường quét: 86% x 54% — TRÙNG với computeQrbox() trong JS
+                 (inset-x 7% => rộng 86%, inset-y 23% => cao 54%) để khung nhìn thấy
+                 đúng bằng vùng thư viện thực sự giải mã. -->
+            <div id="scanOverlay" class="pointer-events-none absolute inset-0 hidden">
+              <div class="absolute inset-x-[7%] inset-y-[23%] rounded-lg ring-2 ring-cyan-400/70"></div>
+              <div class="absolute inset-x-[7%] inset-y-[23%] overflow-hidden rounded-lg">
+                <div class="scan-line h-0.5 w-full bg-cyan-400 shadow-[0_0_14px_3px_rgba(34,211,238,.75)]"></div>
+              </div>
+            </div>
+
+            <!-- Placeholder khi camera tắt -->
+            <div id="readerPlaceholder" class="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center">
+              <div>
+                <svg class="mx-auto h-9 w-9 text-white/25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 19V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13" />
+                  <circle cx="12" cy="11" r="3.2" />
+                  <path d="M8.5 19a3.5 3.5 0 0 1 7 0" />
+                </svg>
+                <p class="mt-3 text-sm font-medium text-white/85">Camera đang tắt</p>
+                <p class="mt-1 text-[12px] text-white/45">Nhấn “Mở Camera Quét Mã” để bắt đầu</p>
+              </div>
+            </div>
+          </div>
+
+          <p id="camHint" class="mt-3 text-[12px] leading-relaxed text-slate-500">
+            Mẹo: đưa mã vào giữa khung, cách camera 10–20&nbsp;cm, giữ máy chắc và đủ sáng.
+          </p>
+
+          <div class="mt-3 flex gap-2">
+            <button id="scanBtn" type="button"
+                    class="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-navy-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-navy-800 active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5A2.5 2.5 0 0 1 18.5 21H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16" />
+                <path d="M7 12h10" />
+              </svg>
+              <span id="scanBtnText">Mở Camera Quét Mã</span>
+            </button>
+            <button id="switchCamBtn" type="button" title="Đổi camera trước / sau"
+                    class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-3.5 py-3 text-sm font-medium text-navy-900 ring-1 ring-inset ring-slate-300 transition hover:bg-slate-50 active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500">
+              <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2" />
+                <path d="M18 3v3h-3M6 21v-3h3" />
+              </svg>
+              <span class="hidden sm:inline">Đổi</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- 2. THÔNG TIN & LƯU ---------- -->
+      <section class="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/70">
+        <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+          <h2 class="flex items-center gap-2 text-sm font-semibold text-navy-900">
+            <span class="grid h-5 w-5 place-items-center rounded-md bg-cyan-50 text-[11px] font-bold text-cyan-700 ring-1 ring-cyan-100">2</span>
+            Thông tin &amp; lưu dữ liệu
+          </h2>
+          <span class="text-[12px] text-slate-500">Phiên này: <strong id="sessionCount" class="font-semibold text-navy-900">0</strong></span>
+        </div>
+
+        <form id="scanForm" class="space-y-4 p-4 sm:p-5" novalidate>
+          <!-- Mã thẻ -->
+          <div>
+            <div class="flex items-center justify-between">
+              <label for="barcode" class="block text-[13px] font-medium text-slate-700">
+                Mã thẻ <span class="font-normal text-slate-400">(từ camera)</span>
+              </label>
+              <button id="manualToggle" type="button" class="text-[12px] font-medium text-cyan-700 underline-offset-2 hover:underline">
+                Nhập thủ công
+              </button>
+            </div>
+            <div class="mt-1.5 flex gap-2">
+              <input id="barcode" name="barcode" type="text" readonly autocomplete="off" spellcheck="false"
+                     placeholder="Chưa có mã — hãy quét"
+                     class="w-full rounded-xl border-0 bg-slate-100 px-3.5 py-3 font-mono text-[15px] tracking-wide text-navy-900 ring-1 ring-inset ring-slate-200 transition placeholder:font-sans placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-cyan-500" />
+              <button id="clearBarcodeBtn" type="button" title="Xóa mã" aria-label="Xóa mã"
+                      class="inline-flex w-12 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 ring-1 ring-inset ring-slate-200 transition hover:bg-slate-50 hover:text-slate-700">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tên khách hàng -->
+          <div>
+            <label for="customerName" class="block text-[13px] font-medium text-slate-700">
+              Tên khách hàng <span class="font-normal text-slate-400">(tùy chọn)</span>
+            </label>
+            <input id="customerName" name="customerName" type="text" autocomplete="off" maxlength="120"
+                   placeholder="VD: Nguyễn Văn A"
+                   class="mt-1.5 w-full rounded-xl border-0 bg-white px-3.5 py-3 text-[15px] text-navy-900 ring-1 ring-inset ring-slate-200 transition placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-cyan-500" />
+          </div>
+
+          <!-- Số điện thoại -->
+          <div>
+            <label for="phone" class="block text-[13px] font-medium text-slate-700">
+              Số điện thoại <span class="font-normal text-slate-400">(tùy chọn)</span>
+            </label>
+            <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="off" maxlength="20"
+                   placeholder="VD: 0912 345 678"
+                   class="mt-1.5 w-full rounded-xl border-0 bg-white px-3.5 py-3 text-[15px] text-navy-900 ring-1 ring-inset ring-slate-200 transition placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-cyan-500" />
+          </div>
+
+          <button id="saveBtn" type="submit"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-600 px-4 py-3.5 text-[15px] font-semibold text-navy-950 shadow-card transition hover:from-cyan-400 hover:to-cyan-500 active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-900">
+            <svg id="saveIcon" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+              <path d="M17 21v-8H7v8M7 3v5h8" />
+            </svg>
+            <span id="saveSpinner" class="spinner hidden h-4 w-4 rounded-full border-2 border-navy-950/30 border-t-navy-950"></span>
+            <span id="saveBtnText">Lưu Dữ Liệu</span>
+          </button>
+        </form>
+      </section>
+
+      <!-- ---------- 3. QUÉT GẦN ĐÂY ---------- -->
+      <section class="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/70 lg:col-span-2">
+        <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
+          <h2 class="text-sm font-semibold text-navy-900">Quét gần đây</h2>
+          <button id="refreshBtn" type="button" class="text-[12px] font-medium text-cyan-700 underline-offset-2 hover:underline">
+            Làm mới
+          </button>
+        </div>
+        <div id="recentWrap" class="p-4 sm:p-5">
+          <p id="recentEmpty" class="py-6 text-center text-[13px] text-slate-500">Chưa có dữ liệu.</p>
+          <ul id="recentList" class="hidden divide-y divide-slate-100"></ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mt-6 text-center text-[11px] leading-relaxed text-slate-400">
+      Dữ liệu được ghi trực tiếp vào Google Sheet <span class="font-medium text-slate-500">Quetma</span>.<br />
+      Vui lòng không đóng trình duyệt khi đang lưu.
+    </footer>
   </div>
-  <details id="opt-details" class="rounded-xl border px-3 py-2" style="background:#0f2144; border-color:rgba(34,211,238,.15);">
-    <summary class="flex items-center justify-between text-xs text-gray-400 cursor-pointer py-1 font-medium select-none">
-      <span class="flex items-center gap-1.5">
-        <svg class="arr w-3 h-3 flex-shrink-0 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        Thêm Tên KH / Số điện thoại
-      </span>
-      <span class="text-[10px] text-gray-500">(Tuỳ chọn)</span>
-    </summary>
-    <div class="mt-2 space-y-2 pt-2 border-t border-gray-700/50">
-      <input id="input-name" type="text" autocomplete="off" placeholder="Tên khách hàng" class="ifield" />
-      <input id="input-phone" type="tel" autocomplete="off" placeholder="Số điện thoại" class="ifield" />
-    </div>
-  </details>
-  <button id="btn-save" onclick="saveRecord()" class="btn-press w-full rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200" style="padding:.85rem; background:linear-gradient(135deg,#0e7490,#06b6d4); color:#fff; box-shadow:0 4px 16px rgba(6,182,212,.3);">
-    <svg id="save-ico" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-    <svg id="save-spin" class="hidden w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-    <span id="save-lbl">Lưu Dữ Liệu</span>
-  </button>
 
-  <!-- ═══════════════════════════════════════════════
-       TIỆN ÍCH MỚI: Kiểm tra trùng / Xuất CSV / Dashboard
-  ══════════════════════════════════════════════════ -->
-  <div class="grid grid-cols-2 gap-2 px-1">
-    <button id="btn-check-dup" onclick="checkDuplicate()"
-            class="btn-press rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200"
-            style="padding:.6rem; background:rgba(234,179,8,.15); color:#fbbf24; border:1px solid rgba(234,179,8,.35); backdrop-filter:blur(4px);">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-      </svg>
-      Kiểm tra trùng
-    </button>
-    <button id="btn-export" onclick="exportCSV()"
-            class="btn-press rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200"
-            style="padding:.6rem; background:rgba(74,222,128,.15); color:#4ade80; border:1px solid rgba(74,222,128,.35); backdrop-filter:blur(4px);">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-      </svg>
-      Xuất CSV
-    </button>
-  </div>
-  <button id="btn-dashboard" onclick="showDashboard()"
-          class="btn-press w-full rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200"
-          style="padding:.6rem; background:rgba(139,92,246,.15); color:#a78bfa; border:1px solid rgba(139,92,246,.35); backdrop-filter:blur(4px);">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M12 15V9m6 8l-3-3m0 0l3-3m-3 3v12m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-    </svg>
-    Xem tất cả bản ghi
-  </button>
-
-  <div id="dashboard-panel" class="hidden px-1 mt-2 rounded-xl border p-3 max-h-[45vh] overflow-y-auto"
-       style="background:#0f2144; border-color:rgba(139,92,246,.25);">
-    <div class="flex items-center justify-between mb-2">
-      <span class="text-xs font-bold text-purple-300 uppercase tracking-wider">📋 Tất cả bản ghi</span>
-      <button onclick="document.getElementById('dashboard-panel').classList.add('hidden')" class="text-xs text-purple-400 hover:text-purple-200">Đóng</button>
-    </div>
-    <div class="flex items-center justify-between mb-2 text-xs text-gray-400">
-      <span id="dash-count">0</span> bản ghi
-    </div>
-    <ul id="dash-list" class="space-y-1"></ul>
-  </div>
-
-  <div class="pt-1">
-    <div class="flex items-center justify-between mb-2 px-1">
-      <p class="text-xs font-medium text-gray-400">
-        Đã lưu phiên này: <span id="log-count" class="font-bold text-cyan-400">0</span> thẻ
-      </p>
-      <button onclick="clearLog()" class="text-xs text-gray-500 hover:text-red-400">Xoá log</button>
-    </div>
-    <ul id="log-list" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></ul>
-  </div>
-</main>
-<script>
-const GAS_API = 'https://script.google.com/macros/s/AKfycbyEpHpOQoEm-bl-D8H7xjpQWwm8N7V1SqFJfFOrzG8x-K1WhNOuY-j-Zxcw3jqPk54K/exec';
-const AUTO_SAVE_MS = 2000;
-const SCAN_COOLDOWN_MS = 2500;
-const BARCODE_REGEX = /^\d{8,15}$/;
-
-let html5QrCode = null;
-let currentCode = '';
-let autoSaveOn = false;
-let autoSaveTimer = null;
-let scanLog = [];
-let _lastCode = '';
-let _lastCodeTs = 0;
-let torchOn = false;
-
-window.addEventListener('DOMContentLoaded', () => {
-  initScanner();
-});
-
-async function initScanner() {
-  const initEl = document.getElementById('cam-init');
-  const msgEl = document.getElementById('cam-init-msg');
-  const spinEl = document.getElementById('cam-spin');
-  const btnEl = document.getElementById('btn-manual-start');
-  initEl.style.display = 'flex';
-  spinEl.classList.remove('hidden');
-  btnEl.classList.add('hidden');
-  msgEl.textContent = 'Đang mở camera quét mã…';
-  try {
-    if (!html5QrCode) {
-      html5QrCode = new Html5Qrcode('reader', { verbose: false });
-    }
-    // Thử camera trước (environment) trước, nếu lỗi thì thử camera sau (user)
-    let started = false;
-    try {
-      await startScanner('environment');
-      started = true;
-    } catch (errEnv) {
-      console.warn('Camera trước lỗi, thử camera sau:', errEnv.message);
-      try {
-        await startScanner('user');
-        started = true;
-      } catch (errUser) {
-        throw errUser;
-      }
-    }
-    if (started) {
-      initEl.style.display = 'none';
-      setCamBadge('live');
-    }
-  } catch (err) {
-    console.error('Html5Qrcode error:', err);
-    spinEl.classList.add('hidden');
-    btnEl.classList.remove('hidden');
-    const msg = err && err.message ? err.message : '';
-    const isPermission = /permission|not allowed|denied/i.test(msg);
-    if (isPermission) {
-      msgEl.innerHTML = '🔒 <strong>Chưa cấp quyền camera</strong><br>Vui lòng chọn “Cho phép” khi trình duyệt hỏi, hoặc cài đặt trong trình duyệt.';
-    } else {
-      msgEl.innerHTML = '⚠️ <strong>Không mở được camera</strong><br>Vui lòng bấm “Thử lại” hoặc kiểm tra kết nối internet.';
-    }
-    setCamBadge('error');
-  }
-}
-
-async function startScanner(facingMode) {
-  await html5QrCode.start(
-    { facingMode: facingMode },
-    {
-      fps: 15,
-      qrbox: { width: 250, height: 250 },
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.QR_CODE
-      ]
-    },
-    onScanSuccess,
-    () => {}
-  );
-}
-
-async function stopCurrentScanner() {
-  if (html5QrCode && html5QrCode.isScanning) {
-    try { await html5QrCode.stop(); } catch (_) {}
-  }
-}
-
-async function switchCameraNext() {
-  showToast('Đang khởi động lại camera…', 'info');
-  await stopCurrentScanner();
-  await initScanner();
-}
-
-function toggleTorch() {
-  showToast('Đèn flash tùy thuộc vào thiết bị/trình duyệt', 'info');
-}
-
-function onScanSuccess(decodedText) {
-  const cleanCode = (decodedText || '').trim();
-  if (!cleanCode) return;
-  if (!BARCODE_REGEX.test(cleanCode)) {
-    console.log('Bỏ qua mã không hợp lệ:', cleanCode);
-    return;
-  }
-  const now = Date.now();
-  if (cleanCode === _lastCode && now - _lastCodeTs < SCAN_COOLDOWN_MS) return;
-  _lastCode = cleanCode;
-  _lastCodeTs = now;
-  if (navigator.vibrate) navigator.vibrate(100);
-  beep();
-  flashScreen();
-  fillCode(cleanCode);
-  if (autoSaveOn) startAutoSave();
-}
-
-async function scanFromImageFile(event) {
-  const file = event.target.files && event.target.files[0];
-  if (!file) return;
-  showToast('Đang phân tích hình ảnh…', 'info');
-  try {
-    const res = await html5QrCode.scanFile(file, true);
-    showToast('✓ Quét ảnh thành công!', 'success');
-    onScanSuccess(res);
-  } catch (err) {
-    console.error('scanFile error:', err);
-    showToast('Không nhận diện được mã trong ảnh này', 'error');
-  }
-  event.target.value = '';
-}
-
-function promptManualInput() {
-  const val = prompt('Nhập hoặc chỉnh sửa mã thẻ:', currentCode || '');
-  if (val !== null) {
-    const trimmed = val.trim();
-    if (trimmed) {
-      if (!BARCODE_REGEX.test(trimmed)) {
-        showToast('Mã nhập không đúng định dạng (8–15 chữ số)', 'error');
-        return;
-      }
-      fillCode(trimmed);
-      showToast('Đã cập nhật mã thẻ', 'info');
-    }
-  }
-}
-
-function fillCode(code) {
-  currentCode = code;
-  const el = document.getElementById('code-display');
-  el.textContent = code;
-  el.style.color = '#22d3ee';
-  el.classList.remove('code-pop');
-  void el.offsetWidth;
-  el.classList.add('code-pop');
-  document.getElementById('btn-clr-code').classList.remove('hidden');
-}
-
-function clearCode() {
-  currentCode = '';
-  _lastCode = '';
-  cancelAutoSave();
-  const el = document.getElementById('code-display');
-  el.textContent = 'Chờ quét…';
-  el.style.color = '#4b5563';
-  document.getElementById('btn-clr-code').classList.add('hidden');
-}
-function toggleAutoSave() {
-  autoSaveOn = !autoSaveOn;
-  const track = document.getElementById('tog-track');
-  const thumb = document.getElementById('tog-thumb');
-  if (autoSaveOn) {
-    track.style.background = '#0e7490';
-    thumb.style.transform = 'translateX(16px)';
-    thumb.style.background = '#22d3ee';
-    showToast('Đã bật tự động lưu', 'info');
-  } else {
-    track.style.background = 'rgba(255,255,255,.1)';
-    thumb.style.transform = 'translateX(0)';
-    thumb.style.background = '#475569';
-    cancelAutoSave();
-  }
-}
-
-function startAutoSave() {
-  cancelAutoSave();
-  const wrap = document.getElementById('cdown-wrap');
-  const fill = document.getElementById('countdown-fill');
-  wrap.classList.remove('hidden');
-  fill.style.transition = 'none';
-  fill.style.width = '100%';
-  fill.offsetWidth;
-  fill.style.transition = `width ${AUTO_SAVE_MS}ms linear`;
-  fill.style.width = '0%';
-  autoSaveTimer = setTimeout(() => {
-    wrap.classList.add('hidden');
-    saveRecord();
-  }, AUTO_SAVE_MS);
-}
-
-function cancelAutoSave() {
-  if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
-  document.getElementById('cdown-wrap').classList.add('hidden');
-}
-
-async function saveRecord() {
-  cancelAutoSave();
-  if (!currentCode) {
-    showToast('Chưa có mã thẻ!', 'error');
-    return;
-  }
-  const name = document.getElementById('input-name').value.trim();
-  const phone = document.getElementById('input-phone').value.trim();
-  const codeToSave = currentCode;
-  setSaving(true);
-  try {
-    const params = new URLSearchParams({ action: 'save', barcode: codeToSave, name, phone });
-    const res = await fetch(`${GAS_API}?${params}`, { redirect: 'follow' });
-    const data = await res.json();
-    if (data && data.success) {
-      showToast(`✓ ${data.message || 'Lưu thành công!'}`, 'success');
-      addLog(codeToSave, name, phone, data.row);
-      clearCode();
-    } else {
-      showToast((data && data.message) || 'Lỗi lưu dữ liệu.', 'error');
-    }
-  } catch (err) {
-    console.error('Save error:', err);
-    showToast('Lỗi gửi dữ liệu: ' + (err.message || 'Network error'), 'error');
-  }
-  setSaving(false);
-}
-// ─── Kiểm tra trùng lặp mã thẻ ──────────────────────────────────
-async function checkDuplicate() {
-  const code = currentCode || '';
-  if (!code) {
-    showToast('Chưa có mã thẻ để kiểm tra!', 'error');
-    return;
-  }
-  try {
-    const params = new URLSearchParams({ action: 'checkDuplicate', barcode: code });
-    const res = await fetch(`${GAS_API}?${params}`, { redirect: 'follow' });
-    const data = await res.json();
-    if (data && data.success) {
-      if (data.exists) {
-        showToast('⚠️ Mã thẻ đã tồn tại trong hệ thống.', 'error');
-      } else {
-        showToast('✓ Mã thẻ chưa từng được quét.', 'success');
-      }
-    } else {
-      showToast((data && data.message) || 'Lỗi kiểm tra trùng.', 'error');
-    }
-  } catch (err) {
-    console.error('checkDuplicate error:', err);
-    showToast('Lỗi kiểm tra trùng: ' + (err.message || 'Network error'), 'error');
-  }
-}
-
-// ─── Xuất dữ liệu ra CSV ────────────────────────────────────────
-async function exportCSV() {
-  try {
-    showToast('Đang xuất CSV…', 'info');
-    const params = new URLSearchParams({ action: 'export' });
-    const res = await fetch(`${GAS_API}?${params}`, { redirect: 'follow' });
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `quetma_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('✓ Đã tải file CSV.', 'success');
-  } catch (err) {
-    console.error('exportCSV error:', err);
-    showToast('Lỗi xuất CSV: ' + (err.message || 'Network error'), 'error');
-  }
-}
-
-// ─── Hiển thị Dashboard (tất cả bản ghi) ────────────────────────
-async function showDashboard() {
-  const panel = document.getElementById('dashboard-panel');
-  const listEl = document.getElementById('dash-list');
-  const countEl = document.getElementById('dash-count');
-  listEl.innerHTML = '<li class="px-2 py-1 text-xs text-gray-400">Đang tải…</li>';
-  countEl.textContent = '–';
-  panel.classList.remove('hidden');
-
-  try {
-    const params = new URLSearchParams({ action: 'getAll' });
-    const res = await fetch(`${GAS_API}?${params}`, { redirect: 'follow' });
-    const data = await res.json();
-    if (data && data.success) {
-      countEl.textContent = data.count;
-      renderDashboard(data.data || []);
-    } else {
-      listEl.innerHTML = `<li class="px-2 py-1 text-xs text-red-400">${(data && data.message) || 'Lỗi lấy dữ liệu.'}</li>`;
-    }
-  } catch (err) {
-    console.error('showDashboard error:', err);
-    listEl.innerHTML = `<li class="px-2 py-1 text-xs text-red-400">Lỗi: ${err.message || 'Network error'}</li>`;
-  }
-}
-
-function renderDashboard(data) {
-  const listEl = document.getElementById('dash-list');
-  if (!data || data.length === 0) {
-    listEl.innerHTML = '<li class="px-2 py-1 text-xs text-gray-400">Chưa có bản ghi nào.</li>';
-    return;
-  }
-  // Hiển thị tối đa 50 bản ghi gần nhất
-  const items = data.slice(0, 50);
-  listEl.innerHTML = items.map((row, i) => `
-    <li class="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs border border-gray-700/30" style="background:rgba(255,255,255,.02);">
-      <span class="w-4 h-4 rounded-full flex items-center justify-center font-bold text-[10px] text-purple-300" style="background:rgba(139,92,246,.15);">${data.length - i}</span>
-      <span class="flex-1 font-mono font-semibold truncate text-cyan-300">${row['Mã thẻ'] || ''}</span>
-      <span class="text-gray-400 truncate max-w-[90px]">${row['Tên khách hàng'] || '—'}</span>
-      <span class="text-[10px] text-gray-500">${row['Thời gian quét'] || ''}</span>
-    </li>
-  `).join('');
-}
-
-function setSaving(on) {
-  const btn = document.getElementById('btn-save');
-  btn.disabled = on;
-  btn.style.opacity = on ? '.65' : '1';
-  document.getElementById('save-ico').classList.toggle('hidden', on);
-  document.getElementById('save-spin').classList.toggle('hidden', !on);
-  document.getElementById('save-lbl').textContent = on ? 'Đang lưu…' : 'Lưu Dữ Liệu';
-}
-
-function beep() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.value = 1400;
-    gain.gain.setValueAtTime(0.18, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.12);
-  } catch (_) {}
-}
-
-function flashScreen() {
-  const el = document.getElementById('scan-flash');
-  el.classList.remove('flash');
-  void el.offsetWidth;
-  el.classList.add('flash');
-  setTimeout(() => el.classList.remove('flash'), 250);
-}
-
-function setCamBadge(state) {
-  const b = document.getElementById('cam-badge');
-  if (state === 'live') {
-    b.style.cssText = 'background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.3);';
-    b.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span> 🟢 Live';
-  } else {
-    b.style.cssText = 'background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);';
-    b.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block"></span> ⛔ Chưa bật';
-  }
-}
-
-function addLog(barcode, name, phone, row) {
-  const t = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  scanLog.unshift({ barcode, name, phone, t, row });
-  if (scanLog.length > 50) scanLog.pop();
-  document.getElementById('log-count').textContent = scanLog.length;
-  renderLog();
-}
-
-function renderLog() {
-  document.getElementById('log-list').innerHTML = scanLog.map((x, i) => `
-    <li class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs" style="background:rgba(255,255,255,.03);border:1px solid rgba(34,211,238,.1);">
-      <span class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px]" style="background:rgba(6,182,212,.2);color:#22d3ee;">${scanLog.length - i}</span>
-      <span class="flex-1 font-mono font-semibold truncate text-cyan-400">${x.barcode}</span>
-      ${x.name ? `<span class="text-gray-400 truncate max-w-[80px]">${x.name}</span>` : ''}
-      <span class="text-gray-500 text-[11px]">${x.t}</span>
-    </li>
-  `).join('');
-}
-
-function clearLog() {
-  scanLog = [];
-  document.getElementById('log-count').textContent = '0';
-  document.getElementById('log-list').innerHTML = '';
-}
-
-let toastTimer;
-function showToast(msg, type = 'info') {
-  const t = document.getElementById('toast');
-  const isSuccess = type === 'success';
-  const isError = type === 'error';
-  t.style.background = isSuccess ? '#064e3b' : isError ? '#7f1d1d' : '#1e3a5f';
-  t.style.color = isSuccess ? '#6ee7b7' : isError ? '#fca5a5' : '#93c5fd';
-  t.style.border = `1px solid ${isSuccess ? '#34d399' : isError ? '#f87171' : '#38bdf8'}`;
-  document.getElementById('t-msg').textContent = msg;
-  t.classList.replace('hide', 'show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.replace('show', 'hide'), 3000);
-}
-
-  <div id="toast" class="hide fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium shadow-2xl flex items-center gap-2 max-w-[90vw]">
-    <span id="t-ico"></span>
-    <span id="t-msg"></span>
-  </div>
+  <!-- ============================ TOAST ============================ -->
+  <div id="toastWrap" class="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center gap-2 px-4"
+       style="padding-bottom: max(16px, env(safe-area-inset-bottom));"></div>
 
   <script>
-    if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').catch(() => {});
-    }
+    (function () {
+      'use strict';
+
+      /* --------------------------------------------------------- *
+       *  Tham chiếu DOM
+       * --------------------------------------------------------- */
+      var el = {
+        reader: document.getElementById('reader'),
+        readerPlaceholder: document.getElementById('readerPlaceholder'),
+        scanOverlay: document.getElementById('scanOverlay'),
+        scanBtn: document.getElementById('scanBtn'),
+        scanBtnText: document.getElementById('scanBtnText'),
+        switchCamBtn: document.getElementById('switchCamBtn'),
+        camStatusText: document.getElementById('camStatusText'),
+        camDot: document.getElementById('camDot'),
+        camHint: document.getElementById('camHint'),
+        beepToggle: document.getElementById('beepToggle'),
+        form: document.getElementById('scanForm'),
+        barcode: document.getElementById('barcode'),
+        clearBarcodeBtn: document.getElementById('clearBarcodeBtn'),
+        manualToggle: document.getElementById('manualToggle'),
+        customerName: document.getElementById('customerName'),
+        phone: document.getElementById('phone'),
+        saveBtn: document.getElementById('saveBtn'),
+        saveBtnText: document.getElementById('saveBtnText'),
+        saveSpinner: document.getElementById('saveSpinner'),
+        saveIcon: document.getElementById('saveIcon'),
+        sessionCount: document.getElementById('sessionCount'),
+        recentWrap: document.getElementById('recentWrap'),
+        recentEmpty: document.getElementById('recentEmpty'),
+        recentList: document.getElementById('recentList'),
+        refreshBtn: document.getElementById('refreshBtn'),
+        toastWrap: document.getElementById('toastWrap')
+      };
+
+      /* --------------------------------------------------------- *
+       *  State
+       * --------------------------------------------------------- */
+      var state = {
+        scanner: null,
+        scanning: false,
+        starting: false,
+        wasLive: false,              // true nếu camera đang quét trước khi mất focus
+        facingMode: 'environment',   // 'environment' = camera sau, 'user' = camera trước
+        cameras: [],                 // danh sách camera thật của thiết bị
+        camIndex: -1,
+        busy: false,
+        audioCtx: null,
+        wakeLock: null,
+        sessionCount: 0,
+        cooldown: {},                // mã -> thời điểm quét (chống quét trùng trong 2,5s)
+        pendingCode: '',             // mã đang chờ xác nhận (phải đọc trùng 2 lần)
+        pendingCount: 0,
+        pendingAt: 0,
+        lastRejectAt: 0              // hạn chế spam thông báo "mã không hợp lệ"
+      };
+
+      /* ============================================================
+       *  CẤU HÌNH API — trỏ tới Google Apps Script Web App
+       *  Thay URL bên dưới bằng URL /exec của bạn sau khi deploy.
+       * ============================================================ */
+      var GAS_API = 'https://script.google.com/macros/s/AKfycbyEpHpOQoEm-bl-D8H7xjpQWwm8N7V1SqFJfFOrzG8x-K1WhNOuY-j-Zxcw3jqPk54K/exec';
+
+      /* ============================================================
+       *  CẤU HÌNH QUÉT MÃ
+       * ============================================================ */
+      /* Định dạng nhận diện — thêm/bớt tại đây nếu cần, ví dụ
+         Html5QrcodeSupportedFormats.CODE_39, .DATA_MATRIX, .ITF, .EAN_8…
+         Càng nhiều định dạng thì nguy cơ đọc ra mã SAI càng cao
+         (một nhãn EAN-13 có thể bị dịch nhầm sang UPC-A/ITF/Code 39),
+         nên chỉ để lại những loại thực sự dùng. */
+      function scanFormats() {
+        return [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ];
+      }
+
+      var CODE_MIN_LEN = 8;          // mã vạch 1D: ít nhất 8 chữ số
+      var CODE_MAX_LEN = 15;         // mã vạch 1D: nhiều nhất 15 chữ số
+      var SCAN_COOLDOWN_MS = 2500;   // 2,5 giây: không nhận lại cùng một mã
+      var REQUIRED_CONFIRM = 2;      // phải đọc trùng 2 lần liên tiếp mới nhận (chống mã rác)
+      /* QR của thẻ dịch vụ thường chứa cả chữ/URL, và mã QR gần như không thể bị
+         đọc rác nhờ mã sửa lỗi Reed-Solomon — nên mặc định nới cho QR.
+         Mã vạch 1D (EAN-13 / Code 128) LUÔN giữ luật 8–15 chữ số + check digit. */
+      var QR_ACCEPT_ANY_CONTENT = true;
+
+      /* --------------------------------------------------------- *
+       *  Tiện ích
+       * --------------------------------------------------------- */
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      /* --------------------------------------------------------- *
+       *  Kiểm tra mã hợp lệ (chống đọc rác / false positive)
+       * --------------------------------------------------------- */
+      /** Bỏ khoảng trắng và ký tự vô hình mà đầu đọc có thể chèn vào mã */
+      function sanitizeCode(raw) {
+        return String(raw == null ? '' : raw).replace(/[\s\u200b\u200c\u200d\u200e\u200f\ufeff]+/g, '');
+      }
+
+      /** Chuẩn hoá tên định dạng trả về từ Html5Qrcode / BarcodeDetector */
+      function normalizeFormat(name) {
+        var f = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (f === 'ean13' || f === 'upca') return 'ean13';
+        if (f === 'ean8') return 'ean8';
+        if (f === 'code128') return 'code128';
+        if (f === 'qrcode' || f === 'qr') return 'qr';
+        return '';
+      }
+
+      /** Chữ số kiểm tra kiểu EAN/UPC (mod 10, trọng số 3-1) */
+      function checkDigitOk(code) {
+        if (!/^\d+$/.test(code) || code.length < 2) return false;
+        var body = code.slice(0, -1);
+        var sum = 0;
+        var weight = 3;
+        for (var i = body.length - 1; i >= 0; i--) {
+          sum += Number(body.charAt(i)) * weight;
+          weight = weight === 3 ? 1 : 3;
+        }
+        return (10 - (sum % 10)) % 10 === Number(code.charAt(code.length - 1));
+      }
+
+      /**
+       * Chỉ nhận: mã vạch 1D = 8–15 chữ số (+ check digit với họ EAN/UPC);
+       * QR = nội dung bất kỳ khi QR_ACCEPT_ANY_CONTENT = true.
+       * @returns {{ok:boolean, code:string, reason:string, format:string}}
+       */
+      function validateCode(raw, formatHint) {
+        var code = sanitizeCode(raw);
+        if (!code) return { ok: false, code: code, reason: 'empty', format: '' };
+        var fmt = normalizeFormat(formatHint);
+
+        if (fmt === 'qr' && QR_ACCEPT_ANY_CONTENT) {
+          if (code.length >= 1 && code.length <= 200) return { ok: true, code: code, reason: '', format: fmt };
+          return { ok: false, code: code, reason: 'length', format: fmt };
+        }
+
+        if (!/^\d+$/.test(code)) return { ok: false, code: code, reason: 'not-digits', format: fmt };
+        if (code.length < CODE_MIN_LEN || code.length > CODE_MAX_LEN) {
+          return { ok: false, code: code, reason: 'length', format: fmt };
+        }
+        /* Thư viện báo là EAN-13 nhưng chuỗi không phải 13 số (ví dụ 10 số) → lỗi đọc.
+           Một số máy báo UPC-A thành EAN-13 nên vẫn cho phép 12 số. */
+        if (fmt === 'ean13') {
+          if (code.length !== 13 && code.length !== 12) {
+            return { ok: false, code: code, reason: 'symbol-length', format: fmt };
+          }
+          if (!checkDigitOk(code)) return { ok: false, code: code, reason: 'checksum', format: fmt };
+          return { ok: true, code: code, reason: '', format: fmt };
+        }
+        if (fmt === 'ean8') {
+          if (code.length !== 8) return { ok: false, code: code, reason: 'symbol-length', format: fmt };
+          if (!checkDigitOk(code)) return { ok: false, code: code, reason: 'checksum', format: fmt };
+          return { ok: true, code: code, reason: '', format: fmt };
+        }
+
+        /* Không rõ định dạng: chuỗi dạng EAN/UPC (13/12/8 số) vẫn phải đúng check digit */
+        if (code.length === 13 || code.length === 12 || code.length === 8) {
+          if (!checkDigitOk(code)) return { ok: false, code: code, reason: 'checksum', format: fmt };
+        }
+        return { ok: true, code: code, reason: '', format: fmt };
+      }
+
+      function formatLabel(fmt) {
+        if (fmt === 'ean13') return 'EAN-13';
+        if (fmt === 'ean8') return 'EAN-8';
+        if (fmt === 'code128') return 'CODE 128';
+        if (fmt === 'qr') return 'QR';
+        return '';
+      }
+
+      function toast(message, type) {
+        var palette = {
+          success: 'bg-navy-900 text-white ring-navy-700',
+          error: 'bg-red-600 text-white ring-red-500',
+          info: 'bg-white text-navy-900 ring-slate-200'
+        };
+        var icon = {
+          success: '<path d="M20 6 9 17l-5-5" />',
+          error: '<path d="M12 8v5M12 17h.01M10.3 3.6 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" />',
+          info: '<circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" />'
+        };
+
+        var node = document.createElement('div');
+        node.setAttribute('role', 'status');
+        node.className =
+          'toast-in pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-xl px-4 py-3 text-[13px] font-medium shadow-card ring-1 ' +
+          (palette[type] || palette.info);
+        node.innerHTML =
+          '<svg class="mt-px h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          (icon[type] || icon.info) +
+          '</svg><span class="leading-snug">' + escapeHtml(message) + '</span>';
+
+        el.toastWrap.appendChild(node);
+        setTimeout(function () {
+          node.style.transition = 'opacity .2s ease, transform .2s ease';
+          node.style.opacity = '0';
+          node.style.transform = 'translateY(8px)';
+          setTimeout(function () {
+            if (node.parentNode) node.parentNode.removeChild(node);
+          }, 220);
+        }, type === 'error' ? 5200 : 3200);
+      }
+
+      function beep() {
+        try {
+          var Ctx = window.AudioContext || window.webkitAudioContext;
+          if (!Ctx) return;
+          if (!state.audioCtx) state.audioCtx = new Ctx();
+          var ctx = state.audioCtx;
+          if (ctx.state === 'suspended') ctx.resume();
+
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = 1046.5; // C6
+          gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.2);
+        } catch (e) {
+          /* bỏ qua: một số trình duyệt chặn audio cho tới khi có tương tác */
+        }
+      }
+
+      function vibrate(ms) {
+        try {
+          if (navigator.vibrate) navigator.vibrate(ms);
+        } catch (e) { /* bỏ qua */ }
+      }
+
+      function setCamStatus(text, on) {
+        el.camStatusText.textContent = text;
+        el.camDot.className = 'h-1.5 w-1.5 rounded-full ' + (on ? 'bg-cyan-400 animate-pulse' : 'bg-slate-400');
+      }
+
+      function setBusy(busy) {
+        state.busy = busy;
+        el.saveBtn.disabled = busy;
+        el.saveSpinner.classList.toggle('hidden', !busy);
+        el.saveIcon.classList.toggle('hidden', busy);
+        el.saveBtnText.textContent = busy ? 'Đang lưu...' : 'Lưu Dữ Liệu';
+      }
+
+      /* --------------------------------------------------------- *
+       *  CAMERA / QUÉT MÃ
+       * --------------------------------------------------------- */
+      /* Vùng giải mã = 86% x 54% khung hình — PHẢI trùng với #scanOverlay trong HTML
+         (inset-x-[7%] inset-y-[23%]). Không giới hạn cứng theo px để tỉ lệ luôn khớp ở
+         mọi kích thước màn hình; thư viện yêu cầu mỗi cạnh >= 50px và <= khung, nếu
+         không sẽ báo lỗi. */
+      function computeQrbox(viewfinderWidth, viewfinderHeight) {
+        var width = Math.max(50, Math.floor(viewfinderWidth * 0.86));
+        var height = Math.max(50, Math.floor(viewfinderHeight * 0.54));
+        return {
+          width: Math.min(width, Math.floor(viewfinderWidth)),
+          height: Math.min(height, Math.floor(viewfinderHeight))
+        };
+      }
+
+      function buildScanner() {
+        if (!state.scanner) {
+          // ⚠️ formatsToSupport và useBarCodeDetectorIfSupported CHỈ có tác dụng khi
+          // truyền vào CONSTRUCTOR. Nếu đặt trong config của start() thì thư viện bỏ qua
+          // và mặc định nhận diện CẢ 18 định dạng → dễ đọc ra mã SAI.
+          state.scanner = new Html5Qrcode('reader', {
+            verbose: false,
+            formatsToSupport: scanFormats(),
+            useBarCodeDetectorIfSupported: true   // ưu tiên bộ nhận diện gốc của máy (chính xác hơn ZXing)
+          });
+        }
+        return state.scanner;
+      }
+
+      /** Danh sách camera thật của thiết bị (để đổi camera chính xác trên máy nhiều camera) */
+      function refreshCameraList() {
+        if (typeof Html5Qrcode.getCameras !== 'function') return Promise.resolve();
+        return Html5Qrcode.getCameras()
+          .then(function (list) {
+            state.cameras = list || [];
+            if (!state.cameras.length) return;
+            if (state.camIndex < 0) {
+              var idx = -1;
+              for (var i = 0; i < state.cameras.length; i++) {
+                if (/back|rear|sau|environment|main|world/i.test(state.cameras[i].label || '')) { idx = i; break; }
+              }
+              state.camIndex = idx < 0 ? state.cameras.length - 1 : idx;   // thường camera cuối là camera sau
+            }
+            state.facingMode = isFrontCamera() ? 'user' : 'environment';
+          })
+          .catch(function (err) {
+            console.warn('Không lấy được danh sách camera:', err && err.message);
+            state.cameras = [];
+            state.camIndex = -1;
+          });
+      }
+
+      function isFrontCamera() {
+        var cam = state.cameras[state.camIndex];
+        var label = cam && cam.label ? cam.label : '';
+        if (/front|trước|truoc|face|user/i.test(label)) return true;
+        if (/back|rear|sau|environment|main|world/i.test(label)) return false;
+        return state.facingMode === 'user';
+      }
+
+      function cameraTarget() {
+        if (state.cameras.length && state.camIndex >= 0) {
+          return { deviceId: { exact: state.cameras[state.camIndex].id } };
+        }
+        return { facingMode: state.facingMode };
+      }
+
+      /** Bật lấy nét liên tục — giúp mã vạch 1D rõ nét hơn trên Android */
+      function tuneRunningTrack() {
+        try {
+          var video = el.reader.querySelector('video');
+          var stream = video && video.srcObject;
+          var track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+          if (!track || !track.getCapabilities) return;
+          var caps = track.getCapabilities() || {};
+          var adv = [];
+          if (caps.focusMode && caps.focusMode.indexOf && caps.focusMode.indexOf('continuous') >= 0) adv.push({ focusMode: 'continuous' });
+          if (caps.exposureMode && caps.exposureMode.indexOf && caps.exposureMode.indexOf('continuous') >= 0) adv.push({ exposureMode: 'continuous' });
+          if (adv.length) track.applyConstraints({ advanced: adv }).catch(function () { /* bỏ qua */ });
+        } catch (e) { /* bỏ qua */ }
+      }
+
+      /** Cấu hình cho start(): CHỈ chứa các tham số start() thực sự đọc
+       *  (fps, qrbox, aspectRatio, disableFlip, videoConstraints). */
+      function buildStartConfig(useAspectRatio) {
+        var config = {
+          fps: 12,
+          qrbox: computeQrbox,
+          disableFlip: !isFrontCamera()   // camera sau: không lật ảnh → tránh đọc ngược, nhanh hơn
+        };
+        // Khung bên trên là aspect-[4/3] nên yêu cầu camera phát đúng 4:3 → ảnh không méo
+        if (useAspectRatio) config.aspectRatio = 4 / 3;
+        return config;
+      }
+
+      /** Bật camera. Một số máy không hỗ trợ ràng buộc aspectRatio nên sẽ tự thử lại
+       *  lần 2 mà không kèm aspectRatio (nếu không, cả camera sẽ không mở được). */
+      function startWithRetry(scanner) {
+        return scanner
+          .start(cameraTarget(), buildStartConfig(true), onScanSuccess, function () { /* bỏ qua frame lỗi */ })
+          .catch(function (err) {
+            console.warn('Bật camera kèm aspectRatio lỗi, thử lại không có aspectRatio:', err && err.message);
+            return scanner
+              .stop()
+              .catch(function () { /* chưa kịp chạy thì thôi */ })
+              .then(function () {
+                try { scanner.clear(); } catch (e) { /* bỏ qua */ }
+                return scanner.start(cameraTarget(), buildStartConfig(false), onScanSuccess, function () {});
+              });
+          });
+      }
+
+      function startScan() {
+        if (state.scanning || state.starting) return Promise.resolve();
+
+        if (typeof Html5Qrcode === 'undefined' || typeof Html5QrcodeSupportedFormats === 'undefined') {
+          toast('Không tải được thư viện quét mã. Kiểm tra kết nối mạng rồi tải lại trang.', 'error');
+          return Promise.resolve();
+        }
+        if (!window.isSecureContext) {
+          toast('Trình duyệt chặn camera vì trang không chạy trên HTTPS.', 'error');
+          return Promise.resolve();
+        }
+
+        state.starting = true;
+        el.scanBtn.disabled = true;
+        el.scanBtnText.textContent = 'Đang bật camera...';
+        setCamStatus('Đang bật...', true);
+
+        return refreshCameraList()
+          .then(function () { return startWithRetry(buildScanner()); })
+          .then(function () {
+            state.scanning = true;
+            state.wasLive = true;
+            state.starting = false;
+            // Phiên quét mới: xoá cooldown để mã vừa quét lại có thể quét ngay khi cần
+            state.cooldown = {};
+            state.pendingCode = '';
+            state.pendingCount = 0;
+            el.readerPlaceholder.classList.add('hidden');
+            el.scanOverlay.classList.remove('hidden');
+            el.scanBtnText.textContent = 'Dừng Camera';
+            el.scanBtn.classList.remove('bg-navy-900', 'hover:bg-navy-800');
+            el.scanBtn.classList.add('bg-red-600', 'hover:bg-red-500');
+            el.scanBtn.disabled = false;
+            el.camHint.textContent = 'Đang quét — đưa mã vào giữa khung, giữ máy chắc và đủ sáng.';
+            setCamStatus('Đang quét', true);
+            tuneRunningTrack();
+            requestWakeLock();
+          })
+          .catch(function (err) {
+            state.starting = false;
+            el.scanBtn.disabled = false;
+            el.scanBtnText.textContent = 'Mở Camera Quét Mã';
+            resetCameraUI();
+            toast(cameraErrorMessage(err), 'error');
+          });
+      }
+
+      function stopScan() {
+        if (!state.scanner || (!state.scanning && !state.starting)) {
+          resetCameraUI();
+          return Promise.resolve();
+        }
+
+        return state.scanner
+          .stop()
+          .then(function () {
+            try { state.scanner.clear(); } catch (e) { /* bỏ qua */ }
+          })
+          .catch(function (err) {
+            console.warn('stopScan:', err);
+          })
+          .then(function () {
+            state.scanning = false;
+            state.starting = false;
+            resetCameraUI();
+          });
+      }
+
+      function resetCameraUI() {
+        state.scanning = false;
+        el.scanBtn.disabled = false;
+        el.scanBtnText.textContent = 'Mở Camera Quét Mã';
+        el.scanBtn.classList.add('bg-navy-900', 'hover:bg-navy-800');
+        el.scanBtn.classList.remove('bg-red-600', 'hover:bg-red-500');
+        el.scanOverlay.classList.add('hidden');
+        el.readerPlaceholder.classList.remove('hidden');
+        el.camHint.textContent = 'Mẹo: đưa mã vào giữa khung, cách camera 10–20 cm, giữ máy chắc và đủ sáng.';
+        setCamStatus('Camera tắt', false);
+      }
+
+      function cameraErrorMessage(err) {
+        var name = (err && (err.name || err.code)) || '';
+        var text = String((err && err.message) || err || '');
+
+        if (name === 'NotAllowedError' || /permission|denied|not allowed/i.test(text)) {
+          return 'Bạn chưa cho phép truy cập camera. Vào cài đặt trình duyệt → Quyền → Camera → Cho phép, rồi thử lại.';
+        }
+        if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || /no camera|not found/i.test(text)) {
+          return 'Không tìm thấy camera trên thiết bị này.';
+        }
+        if (name === 'NotReadableError' || /in use|readable/i.test(text)) {
+          return 'Camera đang bị ứng dụng khác chiếm dụng. Đóng ứng dụng đó rồi thử lại.';
+        }
+        if (/overconstrained/i.test(text + name)) {
+          return 'Camera không hỗ trợ cấu hình yêu cầu. Hãy thử nhấn “Đổi” để dùng camera khác.';
+        }
+        return 'Không mở được camera: ' + (text || 'lỗi không xác định');
+      }
+
+      function formatNameOf(decodedResult) {
+        try {
+          var f = decodedResult && decodedResult.result && decodedResult.result.format;
+          return (f && (f.formatName || f.format)) || '';
+        } catch (e) { return ''; }
+      }
+
+      function onScanSuccess(decodedText, decodedResult) {
+        var res = validateCode(decodedText, formatNameOf(decodedResult));
+        var now = Date.now();
+
+        /* 1) Mã không hợp lệ -> bỏ qua (báo lỗi có kiểm soát để không spam) */
+        if (!res.ok) {
+          if (!res.code) return;
+          if (window.console) console.debug('[scan] bỏ qua mã không hợp lệ:', res.code, '(' + res.reason + ')');
+          if (now - state.lastRejectAt < 3000) return;
+          state.lastRejectAt = now;
+          if (res.reason === 'checksum') {
+            toast('Mã đọc bị sai (check digit EAN-13): ' + res.code + '. Giữ máy chắc và quét lại.', 'error');
+          } else if (res.reason === 'symbol-length') {
+            toast('Đọc nhầm loại mã: nhận được "' + res.code + '" (' + res.code.length + ' số) trong khi mã thẻ là EAN-13 (13 số).', 'error');
+          } else if (res.reason === 'not-digits' || res.reason === 'length') {
+            toast('Đã đọc "' + res.code + '" nhưng mã vạch 1D phải là 8–15 chữ số.', 'error');
+          }
+          return;
+        }
+
+        var code = res.code;
+
+        /* 2) Chống quét trùng: cùng một mã trong 2,5 giây thì bỏ qua */
+        if (state.cooldown[code] && now - state.cooldown[code] < SCAN_COOLDOWN_MS) return;
+
+        /* 3) Xác nhận: phải đọc trùng 2 lần liên tiếp mới nhận → loại hẳn mã rác */
+        if (state.pendingCode === code && now - state.pendingAt < 1500) {
+          state.pendingCount++;
+        } else {
+          state.pendingCode = code;
+          state.pendingCount = 1;
+        }
+        state.pendingAt = now;
+        if (state.pendingCount < REQUIRED_CONFIRM) {
+          el.camHint.textContent = 'Đang xác nhận mã ' + code + '…';
+          return;
+        }
+
+        state.cooldown[code] = now;
+        state.pendingCode = '';
+        state.pendingCount = 0;
+
+        if (el.beepToggle.checked) beep();
+        vibrate(60);
+
+        var label = formatLabel(res.format);
+        el.barcode.value = code;
+        el.camHint.textContent = 'Đã quét ' + code + (label ? ' (' + label + ')' : '') + '.';
+        toast('Đã quét mã: ' + code + (label ? '  ·  ' + label : ''), 'success');
+
+        stopScan().then(function () {
+          el.customerName.focus();
+        });
+      }
+
+      /* --------------------------------------------------------- *
+       *  LƯU DỮ LIỆU (fetch → GAS API)
+       * --------------------------------------------------------- */
+      function handleSave(event) {
+        if (event) event.preventDefault();
+        if (state.busy) return;
+
+        var barcode = el.barcode.value.trim();
+        var customerName = el.customerName.value.trim();
+        var phone = el.phone.value.trim();
+
+        if (!barcode) {
+          toast('Chưa có mã thẻ. Hãy quét mã hoặc nhập thủ công.', 'error');
+          el.barcode.focus();
+          return;
+        }
+
+        setBusy(true);
+        var params = new URLSearchParams({
+          action: 'save',
+          barcode: barcode,
+          customerName: customerName,
+          phone: phone
+        });
+        fetch(GAS_API + '?' + params, { redirect: 'follow' })
+          .then(function (res) { return res.json(); })
+          .then(onSaveSuccess)
+          .catch(onSaveFailure);
+      }
+
+      function onSaveSuccess(res) {
+        setBusy(false);
+
+        // Code.gs trả về { ok, message, row } — vẫn chấp nhận { success } để tương thích
+        var ok = !!res && (res.ok === true || res.success === true);
+        if (!ok) {
+          toast((res && res.message) || 'Không lưu được dữ liệu.', 'error');
+          return;
+        }
+
+        state.sessionCount += 1;
+        el.sessionCount.textContent = state.sessionCount;
+        toast(res.message || 'Đã lưu dữ liệu thành công.', 'success');
+
+        resetForm();
+        loadRecent();
+      }
+
+      function onSaveFailure(err) {
+        setBusy(false);
+        toast('Lỗi gửi dữ liệu: ' + ((err && err.message) || 'Network error'), 'error');
+      }
+
+      function resetForm() {
+        el.form.reset();
+        el.barcode.value = '';
+        el.customerName.value = '';
+        el.phone.value = '';
+        setManualMode(false);
+        el.barcode.focus();
+      }
+
+      function setManualMode(on) {
+        el.barcode.readOnly = !on;
+        el.barcode.classList.toggle('bg-slate-100', !on);
+        el.barcode.classList.toggle('bg-white', on);
+        el.manualToggle.textContent = on ? 'Khóa ô nhập' : 'Nhập thủ công';
+        if (on) el.barcode.focus();
+      }
+
+      /* --------------------------------------------------------- *
+       *  DANH SÁCH GẦN ĐÂY (fetch → GAS API ?action=getAll)
+       * --------------------------------------------------------- */
+      function loadRecent() {
+        var params = new URLSearchParams({ action: 'getAll' });
+        fetch(GAS_API + '?' + params, { redirect: 'follow' })
+          .then(function (res) { return res.json(); })
+          .then(renderRecent)
+          .catch(function (err) {
+            console.warn('loadRecent:', err);
+            el.recentList.classList.add('hidden');
+            el.recentEmpty.textContent = 'Không tải được dữ liệu. Nhấn "Làm mới" để thử lại.';
+            el.recentEmpty.classList.remove('hidden');
+          });
+      }
+
+      /** Chuẩn hoá dữ liệu trả về: hỗ trợ { items }, { data } (Code.gs) hoặc mảng thô.
+       *  Code.gs dùng tiêu đề tiếng Việt trong Sheet: 'Mã thẻ', 'Tên khách hàng'… */
+      function normalizeRows(res) {
+        var rows;
+        if (res && res.items) rows = res.items;
+        else if (res && res.data) rows = res.data;
+        else if (Object.prototype.toString.call(res) === '[object Array]') rows = res;
+        else rows = [];
+
+        return rows.map(function (r) {
+          r = r || {};
+          return {
+            barcode: r.barcode || r['Mã thẻ'] || '',
+            customerName: r.customerName || r.name || r['Tên khách hàng'] || '',
+            phone: r.phone || r['Số điện thoại'] || '',
+            timestamp: r.timestamp || r['Thời gian quét'] || ''
+          };
+        }).filter(function (r) { return !!r.barcode; });
+      }
+
+      function renderRecent(res) {
+        var rows = normalizeRows(res);
+        // getRecentScans() đã trả về MỚI NHẤT TRƯỚC; nếu nhận dạng { data } (cả sheet,
+        // thứ tự cũ -> mới) thì lấy 5 dòng cuối rồi đảo lại.
+        var items = (res && res.items) ? rows.slice(0, 5) : rows.slice(-5).reverse();
+
+        if (!items.length) {
+          el.recentList.classList.add('hidden');
+          el.recentEmpty.textContent = 'Chưa có dữ liệu.';
+          el.recentEmpty.classList.remove('hidden');
+          return;
+        }
+
+        el.recentEmpty.classList.add('hidden');
+        el.recentList.classList.remove('hidden');
+        el.recentList.innerHTML = items
+          .map(function (item) {
+            var meta = [];
+            if (item.customerName) meta.push(item.customerName);
+            if (item.phone) meta.push(item.phone);
+
+            return (
+              '<li class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">' +
+              '<span class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100">' +
+              '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">' +
+              '<path d="M7 8v8M10 8v8M13.5 8v8M17 8v8" /></svg></span>' +
+              '<div class="min-w-0 flex-1">' +
+              '<p class="truncate font-mono text-[13px] font-semibold text-navy-900">' + escapeHtml(item.barcode) + '</p>' +
+              '<p class="truncate text-[12px] text-slate-500">' +
+              escapeHtml(meta.length ? meta.join(' · ') : 'Không có thông tin thêm') +
+              '</p></div>' +
+              '<span class="shrink-0 whitespace-nowrap text-[11px] text-slate-400">' + escapeHtml(item.timestamp) + '</span>' +
+              '</li>'
+            );
+          })
+          .join('');
+      }
+
+      /* --------------------------------------------------------- *
+       *  SỰ KIỆN
+       * --------------------------------------------------------- */
+      el.scanBtn.addEventListener('click', function () {
+        if (state.scanning || state.starting) {
+          state.wasLive = false;   // dừng chủ động → không tự bật lại khi quay về tab
+          stopScan();
+        } else {
+          startScan();
+        }
+      });
+
+      el.switchCamBtn.addEventListener('click', function () {
+        refreshCameraList().then(function () {
+          if (state.cameras.length > 1) {
+            // Máy có nhiều camera: xoay vòng theo danh sách thật
+            state.camIndex = (state.camIndex + 1) % state.cameras.length;
+            var cam = state.cameras[state.camIndex] || {};
+            state.facingMode = /front|trước|truoc|face|user/i.test(cam.label || '') ? 'user' : 'environment';
+            toast('Đã chọn camera ' + (state.camIndex + 1) + '/' + state.cameras.length +
+                  (cam.label ? ' — ' + cam.label : ''), 'info');
+          } else {
+            state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+            toast('Chuyển sang camera ' + (state.facingMode === 'environment' ? 'sau' : 'trước') + '.', 'info');
+          }
+          if (state.scanning) stopScan().then(startScan);
+        });
+      });
+
+      el.form.addEventListener('submit', handleSave);
+
+      el.clearBarcodeBtn.addEventListener('click', function () {
+        el.barcode.value = '';
+        // Xoá cooldown để có thể quét lại đúng mã đó ngay lập tức
+        state.cooldown = {};
+        state.pendingCode = '';
+        state.pendingCount = 0;
+        el.barcode.focus();
+      });
+
+      el.manualToggle.addEventListener('click', function () {
+        setManualMode(el.barcode.readOnly);
+      });
+
+      el.refreshBtn.addEventListener('click', loadRecent);
+
+      el.phone.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleSave(e);
+        }
+      });
+
+      // Chuyển sang app/tab khác → nhả camera; quay lại → bật lại nếu đang quét trước đó
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          releaseWakeLock();
+          if (state.scanning) { state.wasLive = true; stopScan(); }
+        } else {
+          requestWakeLock();
+          if (state.wasLive && !state.scanning && !state.starting) startScan();
+        }
+      });
+
+      window.addEventListener('beforeunload', function () {
+        releaseWakeLock();
+        if (state.scanning) stopScan();
+      });
+
+      /* --------------------------------------------------------- *
+       *  WAKE LOCK — giữ màn hình sáng khi đang quét
+       * --------------------------------------------------------- */
+      function requestWakeLock() {
+        try {
+          if (!('wakeLock' in navigator)) return;
+          if (state.wakeLock && !state.wakeLock.released) return;
+          navigator.wakeLock.request('screen').then(function (lock) {
+            state.wakeLock = lock;
+            state.wakeLock.addEventListener('release', function () { state.wakeLock = null; });
+          }).catch(function () { /* bỏ qua nếu trình duyệt không hỗ trợ */ });
+        } catch (e) { /* bỏ qua */ }
+      }
+
+      function releaseWakeLock() {
+        try { if (state.wakeLock) state.wakeLock.release(); } catch (e) { /* bỏ qua */ }
+        state.wakeLock = null;
+      }
+
+      /* --------------------------------------------------------- *
+       *  KHỞI TẠO
+       * --------------------------------------------------------- */
+      state.wasLive = false;
+      state.wakeLock = null;
+      resetCameraUI();
+      requestWakeLock();
+      loadRecent();
+    })();
   </script>
 </body>
 </html>

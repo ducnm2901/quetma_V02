@@ -7,6 +7,9 @@
   <title>Quét Mã Thẻ — Live</title>
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- Dự phòng Codabar: ZXing (trong html5-qrcode) không đọc được hệ mã này,
+       Quagga2 thì đọc được. Chỉ dùng khi các bộ đọc khác đã trượt. -->
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
   <!-- OCR: đọc dải số in dưới mã vạch. Chỉ tải worker/core/dữ liệu ở lần dùng đầu tiên. -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
   <style>
@@ -302,6 +305,15 @@ const IMAGE_UPSCALE_IF  = 1100;   // nếu ảnh nhỏ hơn mức này thì th�
 const DECODE_FORMATS    = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'codabar', 'itf', 'qr_code'];
 const CROP_SCALE_1D     = 3;
 
+/* ── DỰ PHÒNG CODABAR (Quagga2) ──────────────────────────────────────
+   Thẻ ra vào thường in Codabar (mã 2 độ rộng, dạng A2304385010916A).
+   Đã kiểm chứng trên ảnh thật: ZXing đi kèm html5-qrcode trượt cả khung
+   hình, còn Quagga2 đọc đúng → thêm Quagga2 làm đường dự phòng cuối.
+   Quagga2 chạy trên main thread (~0.3–0.9 s/lần) nên chỉ gọi khi các bộ
+   đọc khác đã trượt và giới hạn tần suất để giao diện không bị treo. */
+const CODABAR_MIN_GAP_MS = 1200;   // quét camera: tối đa 1 lần / 1.2 giây
+const CODABAR_MAX_W      = 640;    // thu nhỏ ảnh trước khi giải mã cho nhanh
+
 /* ── OCR ĐỌC DẢI SỐ IN DƯỚI MÃ ───────────────────────────────────────
    Cho phép "chọn luôn số in trên thẻ" thay vì phải quét được mã vạch.
    Tesseract (worker + core wasm + dữ liệu tiếng Việt) chỉ được tải ở lần
@@ -348,6 +360,10 @@ const state = {
   bdCropCanvas: null,   // canvas dùng lại cho bản crop (tránh cấp phát mỗi frame)
   bdBusy: false,        // đang giải mã 1 frame crop
   bdLastAt: 0,
+  /* ── Dự phòng Codabar bằng Quagga2 ── */
+  codabarCanvas: null,  // canvas đệm khi thu nhỏ ảnh
+  codabarLastAt: 0,     // lần thử gần nhất (giới hạn tần suất)
+  codabarCalls: 0,      // số lần đã thử (để thỉnh thoảng bật locate)
   zoom: { min: 1, max: 1, step: 0.1, value: 1, supported: false },  // zoom quang của camera
   /* ── OCR ── */
   ocrWorker: null,
@@ -830,7 +846,9 @@ async function startScanner(useAspectRatio) {
    nhờ đó bỏ được bước "phải đọc trùng 2 lần". */
 function startFastLoop() {
   if (state.bdLoop) return;
-  if (!makeBarcodeDetector()) return;   // máy không có BarcodeDetector → để ZXing làm việc
+  // Máy không có BarcodeDetector (VD iPhone) thì ZXing vẫn quét camera, nhưng
+  // ZXing không đọc được Codabar → vẫn cần vòng này để chạy dự phòng Quagga2.
+  if (!makeBarcodeDetector() && !quaggaReady()) return;
   state.bdLoop = true;
   state.bdGen++;
   const gen = state.bdGen;
@@ -892,6 +910,70 @@ async function detectCropOnce(scale) {
   return null;
 }
 
+/** Quagga2 đã tải xong chưa (CDN có thể bị chặn / offline) */
+function quaggaReady() {
+  return typeof Quagga !== 'undefined' && Quagga && typeof Quagga.decodeSingle === 'function';
+}
+
+/** Vẽ lại canvas ở bề rộng tối đa maxW (không phóng to) cho Quagga chạy nhanh */
+function shrinkCanvas(src, maxW) {
+  if (!src || !src.width || !src.height) return null;
+  const k = Math.min(1, maxW / src.width);
+  if (k >= 0.999) return src;
+  const out = state.codabarCanvas || (state.codabarCanvas = document.createElement('canvas'));
+  out.width = Math.max(1, Math.round(src.width * k));
+  out.height = Math.max(1, Math.round(src.height * k));
+  const ctx = out.getContext('2d');
+  if (!ctx) return null;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, out.width, out.height);
+  return out;
+}
+
+/**
+ * Đọc DUY NHẤT Codabar trên một canvas bằng Quagga2.
+ * @param {HTMLCanvasElement} src  ảnh nguồn
+ * @param {boolean} locate         true = dò vị trí mã (chậm gấp đôi, cứu mã nghiêng)
+ * @returns {Promise<{text:string, format:string}|null>}
+ */
+async function decodeCodabarOnce(src, locate) {
+  if (!quaggaReady()) return null;
+  const canvas = shrinkCanvas(src, CODABAR_MAX_W);
+  if (!canvas) return null;
+  let url;
+  try { url = canvas.toDataURL('image/jpeg', 0.85); } catch (_) { return null; }
+  try {
+    const res = await Quagga.decodeSingle({
+      src: url,
+      numOfWorkers: 0,          // decodeSingle luôn chạy đồng bộ trên main thread
+      locate: !!locate,
+      inputStream: { size: 900 },
+      decoder: { readers: ['codabar_reader'], multiple: false }
+    });
+    const cr = res && res.codeResult;
+    if (cr && cr.code) return { text: String(cr.code), format: 'CODABAR' };
+  } catch (_) { /* ảnh không có Codabar → bỏ qua */ }
+  return null;
+}
+
+/**
+ * Dự phòng cuối khi quét camera (có giới hạn tần suất).
+ * Nhận hàm tạo canvas để KHÔNG cắt ảnh ở mỗi frame khi chưa tới lượt thử.
+ * locate:false nhanh gấp đôi và đủ khi người dùng đưa mã nằm ngang giữa khung;
+ * cứ 3 lần lại bật locate:true một lần để cứu trường hợp cầm máy hơi nghiêng.
+ */
+async function decodeCodabarLive(makeCanvas) {
+  if (!quaggaReady()) return null;
+  const now = Date.now();
+  if (now - state.codabarLastAt < CODABAR_MIN_GAP_MS) return null;
+  state.codabarLastAt = now;
+  state.codabarCalls++;
+  const src = typeof makeCanvas === 'function' ? makeCanvas() : makeCanvas;
+  if (!src) return null;
+  return decodeCodabarOnce(src, state.codabarCalls % 3 === 0);
+}
+
 async function fastDetectOnce() {
   const now = Date.now();
   if (state.bdBusy || now - state.bdLastAt < 90) return;
@@ -899,8 +981,13 @@ async function fastDetectOnce() {
   state.bdLastAt = now;
   try {
     // frame gốc trước (gần như không tốn gì), rồi mới tới bản phóng to
-    let hit = await detectCropOnce(1);
-    if (!hit) hit = await detectCropOnce(CROP_SCALE_1D);
+    let hit = null;
+    if (state.bd) {
+      hit = await detectCropOnce(1);
+      if (!hit) hit = await detectCropOnce(CROP_SCALE_1D);
+    }
+    // Cuối cùng mới thử Codabar (ZXing không đọc được hệ mã này) — có giới hạn tần suất
+    if (!hit) hit = await decodeCodabarLive(function () { return cropViewfinder(1); });
     if (hit) handleDecoded(hit.text, { result: { format: { formatName: hit.format } } }, false);
   } finally {
     state.bdBusy = false;
@@ -1144,6 +1231,14 @@ async function decodeImageFile(file, onProgress) {
     specs.push({ rot: 0, scale: 2 }, { rot: 90, scale: 2 }, { rot: 180, scale: 2 }, { rot: 270, scale: 2 });
   }
 
+  // Dự phòng Codabar (Quagga2) — chạy sau cùng vì chậm hơn các bộ đọc khác.
+  // locate:false đủ cho ảnh chụp thẳng và nhanh gấp nhiều lần locate:true.
+  const codabarVariants = [
+    { rot: 0, locate: false },
+    { rot: 0, locate: true },
+    { rot: 90, locate: true }
+  ];
+
   // BarcodeDetector gốc của máy (nhanh & chính xác) — có trên Chrome/Android.
   // Trước đây chỉ đăng ký 3 định dạng nên ảnh chứa EAN-8 / UPC / Code 39 / ITF
   // luôn bị trượt; giờ dùng chung danh sách với lúc quét camera.
@@ -1158,13 +1253,35 @@ async function decodeImageFile(file, onProgress) {
   const hasGrid = !!detector;
   const totalSteps = specs.reduce(function (n, s) {
     return n + 1 + (s.scale === 1 && hasGrid ? GRID_CELLS : 0);
-  }, 0);
+  }, codabarVariants.length);
   let stepDone = 0;
   const tick = function (label) {
     stepDone = Math.min(totalSteps, stepDone + 1);
     if (onProgress) onProgress(stepDone, totalSteps, label);
   };
   const rotLabel = function (deg) { return deg ? 'xoay ' + deg + '°' : 'ảnh gốc'; };
+
+  // Dự phòng Codabar: ZXing không đọc được hệ mã này, Quagga2 thì đọc được.
+  // Chạy NGAY sau lượt đọc đầu tiên (trước lưới cắt — phần tốn thời gian nhất)
+  // để ảnh chụp thẻ Codabar không phải chờ hết vài chục bước mới được đọc.
+  let codabarDone = false;
+  const tryCodabarVariants = async function () {
+    if (codabarDone) return null;
+    codabarDone = true;
+    for (let i = 0; i < codabarVariants.length; i++) {
+      const v = codabarVariants[i];
+      const canvas = rotatedCanvas(img, v.rot);
+      const cbHit = canvas ? await decodeCodabarOnce(canvas, v.locate) : null;
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+      tick('thử Codabar · ' + rotLabel(v.rot));
+      if (cbHit) {
+        const cbRes = validateCode(cbHit.text, cbHit.format);
+        if (cbRes.ok) return cbRes.code;
+        if (!state.imageReject) state.imageReject = cbRes;
+      }
+    }
+    return null;
+  };
 
   for (let i = 0; i < specs.length; i++) {
     // 1) Các biến thể cơ bản của cả ảnh (nhanh, đủ cho ảnh chụp thẳng)
@@ -1178,7 +1295,13 @@ async function decodeImageFile(file, onProgress) {
       state.imageReject = res;   // đọc được mã nhưng không hợp lệ → ghi nhớ để báo cho người dùng
     }
 
-    // 2) Lưới cắt + phóng to: cứu các ảnh chụp xa, mã nhỏ hoặc nghiêng.
+    // 2) Ngay sau lượt đầu tiên: thử Codabar (nếu chưa thử)
+    if (i === 0) {
+      const cbCode = await tryCodabarVariants();
+      if (cbCode) return cbCode;
+    }
+
+    // 3) Lưới cắt + phóng to: cứu các ảnh chụp xa, mã nhỏ hoặc nghiêng.
     //    Chỉ chạy trên các biến thể ở tỉ lệ gốc — biến thể phóng to 2x đã bị lưới
     //    phủ trùm lên, chạy lại chỉ tốn thời gian mà không thêm khả năng đọc được.
     if (specs[i].scale === 1) {
@@ -1192,7 +1315,9 @@ async function decodeImageFile(file, onProgress) {
       }
     }
   }
-  return null;
+  // Codabar đã được thử ngay sau lượt đọc đầu tiên; đây là chốt an toàn nếu
+  // danh sách biến thể rỗng (không xảy ra với ảnh hợp lệ).
+  return await tryCodabarVariants();
 }
 
 /** Ảnh đã xoay sẵn (dùng lại drawToCanvas) — làm gốc để cắt vùng */

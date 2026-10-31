@@ -15,7 +15,8 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #08152e; color: #e2e8f0; overflow-x: hidden; }
+    html, body { height: auto; min-height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #08152e; color: #e2e8f0; overflow-x: hidden; }
+    body { min-height: 100svh; }
 
     /* ── Khung camera ──────────────────────────────────────────────
        #cam-stage KHÔNG đặt chiều cao cứng: chiều cao = chiều cao video.
@@ -23,7 +24,16 @@
        nên nếu khung bị kéo cao/thấp hơn video thì khung ngắm sẽ lệch. */
     #cam-wrap { position: relative; width: 100%; background: #000; overflow: hidden; border-bottom: 1px solid rgba(34,211,238,.12); }
     #cam-stage { position: relative; width: 100%; min-height: 250px; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    #cam-stage.live { display: block; min-height: 0; }
+    /* Khi camera chạy: bề rộng bị chặn theo chiều cao tối đa (--cam-max-h) và tỉ lệ
+       thật của luồng video (--cam-ar do JS đặt). Nhờ vậy toàn bộ khung hình vẫn
+       hiển thị đủ (không cắt) — khung ngắm và vùng giải mã vẫn khớp nhau — nhưng
+       phần nhập liệu bên dưới không bị đẩy ra khỏi màn hình. */
+    #cam-stage.live {
+      display: block; min-height: 0;
+      width: 100%;
+      max-width: calc(var(--cam-max-h, 58vh) * var(--cam-ar, 0.75));
+      margin: 0 auto;
+    }
     #reader { width: 100% !important; border: none !important; position: relative; background: #000; }
     #reader video { width: 100% !important; height: auto !important; display: block !important; background: #000; }
     /* Ẩn toàn bộ phần UI do thư viện tự vẽ (canvas quét, vùng tối, viền xanh, chữ "paused") */
@@ -131,16 +141,18 @@
     <span id="scan-hint-text">🎯 Đưa mã vạch / mã QR vào khung ngắm</span>
   </div>
 </div>
-<main class="flex-1 w-full px-4 py-3 space-y-3 overflow-y-auto">
-  <div class="flex items-center justify-between px-1">
-    <div class="flex items-center gap-2">
+<main class="flex-1 w-full px-4 py-3 pb-8 space-y-3">
+  <div class="flex items-center justify-between px-1 gap-2">
+    <div class="flex items-center gap-2 min-w-0 flex-shrink-0">
       <span class="text-[10px] text-gray-400 font-medium">MÃ THẺ ĐÃ QUÉT</span>
       <button onclick="promptManualInput()" class="text-[10px] text-cyan-400 hover:underline">Sửa / Nhập tay</button>
     </div>
-    <div id="code-display" class="text-base font-mono font-bold truncate mt-0.5 tracking-wider" style="color:#4b5563;">Chờ quét…</div>
-    <button id="btn-clr-code" onclick="clearCode()" class="hidden flex-shrink-0 text-gray-400 hover:text-red-400 p-1" title="Xoá">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-    </button>
+    <div class="flex items-center gap-1 min-w-0">
+      <div id="code-display" class="text-base font-mono font-bold truncate mt-0.5 tracking-wider" style="color:#4b5563;">Chờ quét…</div>
+      <button id="btn-clr-code" onclick="clearCode()" class="hidden flex-shrink-0 text-gray-400 hover:text-red-400 p-1" title="Xoá">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
   </div>
   <div class="flex items-center justify-between px-1 gap-2">
     <label class="flex items-center gap-2 cursor-pointer select-none" onclick="toggleAutoSave()">
@@ -831,6 +843,7 @@ async function startScanner(useAspectRatio) {
   state.wasLive = true;
   $('cam-stage').classList.add('live');
   await tuneRunningTrack();
+  syncCameraAspect();
   updateZoomUI();
   setCamBadge('live');
   setHint(hasNativeDetector()
@@ -972,6 +985,25 @@ async function decodeCodabarLive(makeCanvas) {
   const src = typeof makeCanvas === 'function' ? makeCanvas() : makeCanvas;
   if (!src) return null;
   return decodeCodabarOnce(src, state.codabarCalls % 3 === 0);
+}
+
+/**
+ * Đặt tỉ lệ THẬT của luồng video vào CSS (--cam-ar) để khung camera chỉ bị thu
+ * nhỏ theo đúng tỉ lệ, không cắt mất phần nào của hình. Nhờ vậy khung ngắm vẽ
+ * trên màn hình vẫn trùng với vùng ảnh mà app đem đi giải mã.
+ */
+function syncCameraAspect() {
+  const stage = $('cam-stage');
+  if (!stage) return;
+  const apply = function () {
+    const v = document.querySelector('#reader video');
+    if (v && v.videoWidth && v.videoHeight) {
+      stage.style.setProperty('--cam-ar', String(v.videoWidth / v.videoHeight));
+    }
+  };
+  apply();
+  const video = document.querySelector('#reader video');
+  if (video && !video.videoWidth) video.addEventListener('loadedmetadata', apply, { once: true });
 }
 
 async function fastDetectOnce() {
